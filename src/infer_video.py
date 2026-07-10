@@ -164,6 +164,12 @@ class FERModule:
         global tf
         import json, tensorflow as _tf
         tf = _tf
+        from .utils import preprocess_face
+        self._preprocess_face = preprocess_face
+        if not Path(model_path).exists():
+            raise SystemExit(
+                f"FER model not found: {model_path}\n"
+                "Train one first: python -m src.train --model cnn")
         self.model = tf.keras.models.load_model(model_path)
         with open(class_path, "r", encoding="utf-8") as f:
             self.class_names = json.load(f)
@@ -192,40 +198,37 @@ class FERModule:
             conf = float(det[0,0,i,2])
             if conf < thr: 
                 continue
-            x1 = int(det[0,0,i,3] * w); y1 = int(det[0,0,i,4] * h)
-            x2 = int(det[0,0,i,5] * w); y2 = int(det[0,0,i,6] * h)
-            boxes.append((max(0,x1), max(0,y1), min(w, x2-x1), min(h, y2-y1)))
+            x1 = max(0, int(det[0,0,i,3] * w)); y1 = max(0, int(det[0,0,i,4] * h))
+            x2 = min(w, int(det[0,0,i,5] * w)); y2 = min(h, int(det[0,0,i,6] * h))
+            if x2 > x1 and y2 > y1:
+                boxes.append((x1, y1, x2 - x1, y2 - y1))
         return boxes
 
     def _ensure_tracker(self):
-		# Try non-legacy API first (opencv-python)
-		for name in ("TrackerCSRT_create", "TrackerKCF_create", "TrackerMOSSE_create"):
-			ctor = getattr(cv2, name, None)
-			if callable(ctor):
-				self.tracker = ctor()
-				return self.tracker
-		# Try legacy API (opencv-contrib-python)
-		legacy = getattr(cv2, "legacy", None)
-		if legacy is not None:
-			for name in ("TrackerCSRT_create", "TrackerKCF_create", "TrackerMOSSE_create"):
-				ctor = getattr(legacy, name, None)
-				if callable(ctor):
-					self.tracker = ctor()
-					return self.tracker
-		# No tracker available → run detection-only mode
-		self.tracker = None
-		return None
-    def _prep_face(self, frame_bgr, box, size=48):
+        # Try non-legacy API first (opencv-python)
+        for name in ("TrackerCSRT_create", "TrackerKCF_create", "TrackerMOSSE_create"):
+            ctor = getattr(cv2, name, None)
+            if callable(ctor):
+                self.tracker = ctor()
+                return self.tracker
+        # Try legacy API (opencv-contrib-python)
+        legacy = getattr(cv2, "legacy", None)
+        if legacy is not None:
+            for name in ("TrackerCSRT_create", "TrackerKCF_create", "TrackerMOSSE_create"):
+                ctor = getattr(legacy, name, None)
+                if callable(ctor):
+                    self.tracker = ctor()
+                    return self.tracker
+        # No tracker available → run detection-only mode
+        self.tracker = None
+        return None
+
+    def _prep_face(self, frame_bgr, box):
         x,y,w,h = box
         roi = frame_bgr[y:y+h, x:x+w]
         if roi.size == 0:
             return None
-        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-        gray = cv2.resize(gray, (size, size), interpolation=cv2.INTER_AREA)
-        # normalize to [0,1]
-        img = gray.astype(np.float32) / 255.0
-        img = np.expand_dims(img, axis=(0, -1))  # (1,H,W,1)
-        return img
+        return self._preprocess_face(roi)  # raw 0-255; model rescales internally
 
     def step(self, frame_bgr):
         self.frame_idx += 1
@@ -236,10 +239,7 @@ class FERModule:
             if boxes:
                 # choose largest
                 self.box = max(boxes, key=lambda b: b[2]*b[3])
-                tracker = self._ensure_tracker()
-                if tracker is not None:
-                    tracker.clear() if hasattr(tracker, "clear") else None
-                    self.tracker = self._ensure_tracker()
+                if self._ensure_tracker() is not None:
                     self.tracker.init(frame_bgr, tuple(self.box))
             else:
                 # keep using tracker if available
@@ -255,7 +255,7 @@ class FERModule:
         if self.box is not None:
             img = self._prep_face(frame_bgr, self.box)
             if img is not None:
-                probs = self.model.predict(img, verbose=0)[0]
+                probs = self.model(img, training=False).numpy()[0]
                 prob = float(np.max(probs))
                 label = self.class_names[int(np.argmax(probs))]
 

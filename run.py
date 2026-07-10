@@ -1,6 +1,4 @@
 import argparse
-import sys
-from src.infer_video import main as vid_main
 
 def main():
     p = argparse.ArgumentParser()
@@ -8,7 +6,7 @@ def main():
 
     t = sp.add_parser("train")
     t.add_argument("--model", choices=["cnn","backbone"], default="cnn")
-    t.add_argument("--epochs", type=int, default=50)
+    t.add_argument("--epochs", type=int, default=120)
     t.add_argument("--data", default="data")
 
     sp.add_parser("eval")

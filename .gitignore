@@ -6,6 +6,7 @@ __pycache__/
 *.h5
 *.hdf5
 
+.venv/
 .venv310/
 
 .vscode/

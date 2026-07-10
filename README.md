@@ -22,7 +22,7 @@ This project implements a **real-time facial emotion recognition system** using 
 - Automatic artifact saving (`artifacts/`)
 
 ### **Inference**
-- Real-time webcam detection (`gptinfercam.py`)
+- Real-time webcam detection (`infer_cam.py`)
 - Video inference (`infer_video.py`)
 - OpenCV DNN face detection (`deploy.prototxt` + `res10_300x300_ssd_iter_140000.caffemodel`)
 - EMA smoothing, entropy checks, hysteresis thresholds
@@ -34,21 +34,22 @@ This project implements a **real-time facial emotion recognition system** using 
 ```
 project/
 │
-├── artifacts/                # Saved models, class names, confusion matrix
+├── artifacts/                # Saved models, class names, confusion matrix (ignored in Git)
 ├── assets/                   # Emojis, sample videos, images
-├── configs/                  # Training configs (.yaml)
 ├── data/                     # Training/testing dataset (ignored in Git)
 ├── models/                   # Face detection models (deploy.prototxt, .caffemodel)
 ├── src/
 │   ├── train.py              # Main training entrypoint
 │   ├── eval.py               # Evaluation and confusion matrix
 │   ├── infer_cam.py          # Webcam inference
-│   ├── infer_video.py        # Video inference
+│   ├── infer_video.py        # Video inference (arousal meter + optional FER)
 │   ├── model_cnn.py
 │   ├── model_backbone.py
+│   ├── gradcam.py            # Grad-CAM helper (library use, no CLI)
 │   ├── utils.py
 │   └── data.py
 │
+├── run.py                    # Unified CLI (train / eval / cam / video)
 ├── requirements.txt
 ├── README.md
 └── LICENSE
@@ -59,6 +60,8 @@ project/
 ## 📦 Installation
 
 ### 1. Create a virtual environment
+
+> **Python 3.10 required** — TensorFlow 2.10 does not support 3.11+.
 
 ```bash
 python -m venv .venv
@@ -86,9 +89,9 @@ data/test/<class_name>/
 Then run:
 
 ```bash
-python -m src.train --model cnn --epochs 48
+python -m src.train --model cnn --epochs 120
 # or
-python -m src.train --model backbone --epochs 48
+python -m src.train --model backbone --epochs 120
 ```
 
 Artifacts will be saved to:
@@ -104,17 +107,27 @@ artifacts/model_checkpoint.keras
 ## 🎥 Webcam Emotion Recognition
 
 ```bash
-python -m src.gptinfercam
+python -m src.infer_cam
+# or: python run.py cam
 ```
 
 This opens a live window, detects the face, classifies emotions, and displays a corresponding emoji.
+Requires a trained model in `artifacts/` (see Training above).
 
 ---
 
-## 🎞 Video Emotion Recognition
+## 🎞 Video Analysis (arousal meter + optional FER)
 
 ```bash
-python -m src.infer_video path/to/video.mp4
+python -m src.infer_video --video path/to/video.mp4 --display
+```
+
+To also run emotion recognition during cutscenes:
+
+```bash
+python -m src.infer_video --video path/to/video.mp4 --display --use_fer \
+    --fer_model artifacts/emotion48.keras --fer_classes artifacts/class_names.json \
+    --face_proto models/deploy.prototxt --face_weights models/res10_300x300_ssd_iter_140000.caffemodel
 ```
 
 ---
@@ -135,14 +148,14 @@ Outputs:
 
 ## ⚙ Requirements
 
+Python 3.10, plus:
+
 ```
 tensorflow==2.10.0
 numpy==1.23.5
-mediapipe==0.10.11
-protobuf==3.20.3
+protobuf==3.19.6
 opencv-python
 matplotlib
-pandas
 scikit-learn
 ```
 

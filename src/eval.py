@@ -5,7 +5,7 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report, confusion_matrix
 from pathlib import Path
-from . import PROJECT, ARTIFACTS, DATA_DIR
+from . import ARTIFACTS, DATA_DIR
 from .utils import load_class_names
 
 IMG_SIZE = 48
